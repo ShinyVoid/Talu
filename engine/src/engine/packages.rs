@@ -1,7 +1,15 @@
 use std::path::PathBuf;
 use wolflang::WolfEngine;
 
-pub fn load_packages(_engine: &mut WolfEngine, plugins: Vec<String>) -> Vec<libloading::Library> {
+#[cfg(not(target_arch = "wasm32"))]
+pub type PluginHandle = libloading::Library;
+
+#[cfg(target_arch = "wasm32")]
+pub struct PluginHandle;
+
+/// Loads dynamic plugins on desktop (Windows, Linux, macOS)
+#[cfg(not(target_arch = "wasm32"))]
+pub fn load_packages(engine: &mut WolfEngine, plugins: Vec<String>) -> Vec<PluginHandle> {
     let mut loaded_libs = Vec::new();
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     println!("Package loader starting. CWD: {:?}", cwd);
@@ -16,39 +24,40 @@ pub fn load_packages(_engine: &mut WolfEngine, plugins: Vec<String>) -> Vec<libl
             std::env::consts::DLL_EXTENSION
         );
 
-        // Potential paths to look for the library
+        // Potential search paths for the dynamic library
         let mut search_paths = vec![
             cwd.join("packages").join(&lib_filename),
             cwd.join("packages").join(&plugin_name).join("target/release").join(&lib_filename),
             cwd.join(&lib_filename),
         ];
 
-        // Also check engine root if we are in a subdirectory
+        // Also check relative to executable (engine root)
         if let Ok(exe_path) = std::env::current_exe() {
-            if let Some(engine_root) = exe_path.parent().and_then(|p| p.parent()).and_then(|p| p.parent()) {
-                search_paths.push(engine_root.join("packages").join(&lib_filename));
-                search_paths.push(engine_root.join("packages").join(&plugin_name).join("target/release").join(&lib_filename));
+            if let Some(exe_dir) = exe_path.parent() {
+                search_paths.push(exe_dir.join("packages").join(&lib_filename));
+                search_paths.push(exe_dir.join(&lib_filename));
+
+                if let Some(engine_root) = exe_dir.parent().and_then(|p| p.parent()) {
+                    search_paths.push(engine_root.join("packages").join(&lib_filename));
+                    search_paths.push(engine_root.join("packages").join(&plugin_name).join("target/release").join(&lib_filename));
+                }
             }
         }
-        
-        // Manual fallback for this specific environment
-        search_paths.push(PathBuf::from("/mnt/hangar/Talu/packages").join(&lib_filename));
 
         let mut loaded = false;
         for path in search_paths {
             let abs_path = if path.is_absolute() { path } else { cwd.join(path) };
-            
+
             if abs_path.exists() {
                 unsafe {
                     match libloading::Library::new(&abs_path) {
                         Ok(lib) => {
-                            // ABI-safe symbol lookup
                             match lib.get::<unsafe extern "C" fn(*mut WolfEngine)>(b"register_talu_plugin") {
-                                Ok(_func) => {
-                                    // func(engine as *mut WolfEngine); 
+                                Ok(func) => {
+                                    func(engine as *mut WolfEngine);
                                     loaded_libs.push(lib);
                                     loaded = true;
-                                    println!("Successfully located Rust plugin: {}", plugin_name);
+                                    println!("Successfully activated Rust plugin: '{}' from {:?}", plugin_name, abs_path);
                                     break;
                                 }
                                 Err(e) => {
@@ -65,9 +74,18 @@ pub fn load_packages(_engine: &mut WolfEngine, plugins: Vec<String>) -> Vec<libl
         }
 
         if !loaded {
-            eprintln!("Error: Could not find or load plugin library for '{}'", plugin_name);
+            eprintln!("Warning: Could not find or load dynamic plugin '{}'", plugin_name);
         }
     }
 
     loaded_libs
+}
+
+/// Fallback for WebAssembly / Web targets (no dynamic linking / dlopen)
+#[cfg(target_arch = "wasm32")]
+pub fn load_packages(_engine: &mut WolfEngine, plugins: Vec<String>) -> Vec<PluginHandle> {
+    if !plugins.is_empty() {
+        println!("Web build: dynamic library loading is disabled. Plugins are statically linked: {:?}", plugins);
+    }
+    Vec::new()
 }

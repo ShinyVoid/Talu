@@ -149,7 +149,7 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 wolflang = {{ git = "https://github.com/islamfazliyev/Wolf-Lang" }}
@@ -159,14 +159,20 @@ wolflang = {{ git = "https://github.com/islamfazliyev/Wolf-Lang" }}
 r#"use wolflang::WolfEngine;
 use wolflang::tokens::Token;
 
-#[no_mangle]
-pub extern "C" fn register_talu_plugin(engine: *mut WolfEngine) {
-    let engine = unsafe { &mut *engine };
-
+// Safe Rust registration (for static linking & web targets)
+pub fn register(engine: &mut WolfEngine) {
     engine.push_fn("hello_from_plugin", |_args| {
         println!("Hello from Rust plugin!");
         Token::Unknown
     });
+}
+
+// C-ABI exported entrypoint for dynamic loading on desktop
+#[no_mangle]
+#[cfg(not(target_arch = "wasm32"))]
+pub extern "C" fn register_talu_plugin(engine: *mut WolfEngine) {
+    let engine = unsafe { &mut *engine };
+    register(engine);
 }
 "#).unwrap();
 
