@@ -13,6 +13,7 @@ use engine::utils::utils::*;
 use engine::draw::{draw_register, Shapes};
 use engine::input::input as input_register;
 use crate::engine::asset_pipeline::load_assets;
+use crate::engine::scene_parser::scene_register;
 
 use setup::cli;
 
@@ -25,9 +26,10 @@ fn init_wolf_engine(
     let mut engine = WolfEngine::new();
 
     // Register engine subsystems
-    draw_register(&mut engine, draw_list);
+    draw_register(&mut engine, draw_list.clone());
     input_register(&mut engine);
     crate::engine::physics::physics_register(&mut engine);
+    scene_register(&mut engine, draw_list);
 
     engine.push_fn("floatToInt", |args| {
         if let Some(Token::Float(f)) = args.get(0) {

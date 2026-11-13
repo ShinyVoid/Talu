@@ -1,0 +1,5 @@
+add rect rect1 w=180 h=40 color=c01c28 x=41 y=518 tag=floor
+add rect rect2 w=100 h=40 color=5b6b82 x=222 y=463 tag=floor
+add rect rect3 w=100 h=40 color=5b6b82 x=360 y=396 tag=floor
+add rect rect4 w=100 h=40 color=5b6b82 x=479 y=323 tag=floor
+add rect player w=40 h=40 color=33d17a x=64 y=428 tag=player
